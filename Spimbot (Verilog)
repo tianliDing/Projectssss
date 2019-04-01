@@ -1,0 +1,378 @@
+.data
+# syscall constants
+PRINT_STRING            = 4
+PRINT_CHAR              = 11
+PRINT_INT               = 1
+
+# memory-mapped I/O
+VELOCITY                = 0xffff0010
+ANGLE                   = 0xffff0014
+ANGLE_CONTROL           = 0xffff0018
+
+BOT_X                   = 0xffff0020
+BOT_Y                   = 0xffff0024
+
+TIMER                   = 0xffff001c
+
+SUBMIT_ORDER 		= 0xffff00b0
+DROPOFF 		= 0xffff00c0
+PICKUP 			= 0xffff00e0
+GET_TILE_INFO			= 0xffff0050
+SET_TILE				= 0xffff0058
+
+REQUEST_PUZZLE          = 0xffff00d0
+SUBMIT_SOLUTION         = 0xffff00d4
+
+BONK_INT_MASK           = 0x1000
+BONK_ACK                = 0xffff0060
+
+TIMER_INT_MASK          = 0x8000
+TIMER_ACK               = 0xffff006c
+
+REQUEST_PUZZLE_INT_MASK = 0x800
+REQUEST_PUZZLE_ACK      = 0xffff00d8
+
+GET_MONEY               = 0xffff00e4
+GET_LAYOUT 				= 0xffff00ec
+SET_REQUEST 			= 0xffff00f0
+GET_REQUEST 			= 0xffff00f4
+
+tree1:	.word	0:172
+result:  .word  0:1
+p_flag: .word  0:1
+
+.text
+dfs:
+	blt  $a1, 127, second_if	# if (i >= 127)
+	li   $v0,  -1 				# v0 = -1
+	jr   $ra					# return v0 = -1
+second_if:
+	mul  $t0, $a1, 4            # i*4
+	add  $t0, $a2, $t0          # &tree[i]
+	lw   $t0, 0($t0)            # t0 = tree[i]
+	bne  $a0, $t0, third_chunk  # if (target == tree[i])
+	li   $v0, 0                 # v0 = 0
+	jr   $ra				    # return v0 = 0
+third_chunk:
+	sub  $sp, $sp, 8            # allocate stack
+	sw   $ra, 0($sp)            # save return address to stack
+	sw   $a1, 4($sp)            # save a1 = i
+	mul  $a1, $a1, 2            # 2 * i
+	jal  dfs					# v0 = dfs(target, 2*i, tree)
+
+	blt  $v0, $zero, fourth_chunk
+	add  $v0, $v0, 1            # ret + 1
+	j    end
+fourth_chunk:
+	lw   $a1, 4($sp)
+	mul  $a1, $a1, 2
+	add  $a1, $a1, 1            # $a1 = 2*i + 1
+	jal  dfs					# v0 = dfs(target, 2*i, tree)
+
+	blt  $v0, $zero, end
+	add  $v0, $v0, 1
+end:
+	lw   $ra, 0($sp)
+	lw   $a1, 4($sp)
+	add  $sp, $sp, 8
+	jr   $ra
+
+
+main:
+	# Construct interrupt mask
+	li      $t4, 0
+	or      $t4, $t4, BONK_INT_MASK # request bonk
+	or      $t4, $t4, REQUEST_PUZZLE_INT_MASK	        # puzzle interrupt bit
+	or      $t4, $t4, 1 # global enable
+	mtc0    $t4, $12
+
+    li      $t6, 0
+start:
+    sw      $0, p_flag
+    la      $t5, tree1
+    sw      $t5, REQUEST_PUZZLE
+
+puzzle_loop:
+    lw      $t5, p_flag
+    bne     $t5, 3, puzzle_loop
+
+    li      $a0, 1
+    li      $a1, 1
+    la      $a2, tree1
+    jal     dfs
+    sw      $v0, result
+    la      $t5, result
+    sw      $t5, SUBMIT_SOLUTION($0)
+    add     $t6, $t6, 1
+    blt     $t6, 5, start
+
+
+	# Fill in your code here
+    # ======================================================================
+    li      $t0, 90
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL
+    li      $t0, 1
+    sw      $t0, VELOCITY
+
+while_loop:
+    lw      $t0, BOT_Y
+
+    slt     $t1, $t0, 60
+    li      $t2, 40
+    slt     $t2, $t2, $t0
+    and     $t1, $t1, $t2
+    bne     $t1, 1, while_loop
+
+pick_up_meat:
+    sw      $t1, PICKUP             # pick up a meat on tray 0
+
+    sw      $0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL    
+while_loop_2:                       # turn right
+    lw      $t0, BOT_X
+
+    slt     $t1, $t0, 40
+    li      $t2, 20
+    slt     $t2, $t2, $t0
+    and     $t1, $t1, $t2
+    bne     $t1, 1, while_loop_2
+
+    li      $t0, 90                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+while_loop_3:                       # turn down
+    lw      $t0, BOT_Y
+
+    slt     $t1, $t0, 160
+    li      $t2, 140
+    slt     $t2, $t2, $t0
+    and     $t1, $t1, $t2
+    bne     $t1, 1, while_loop_3
+
+    li      $t0, 180                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL     
+
+pick_up_cheese:
+    sw      $t1, PICKUP             # pick up a cheese on tray 1
+
+    li      $t0, 90                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+while_loop_4:                       # turn down
+    lw      $t0, BOT_Y
+
+    slt     $t1, $t0, 240
+    li      $t2, 220
+    slt     $t2, $t2, $t0
+    and     $t1, $t1, $t2
+    bne     $t1, 1, while_loop_4
+
+    li      $t0, 180                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL     
+
+pick_up_onion:
+    li      $t1, 1
+    sw      $t1, PICKUP             # pick up a union on tray 2
+
+    li      $t0, 270                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+   # =========================================================
+
+while_loop_up:                       # go up
+    lw      $t0, BOT_Y
+
+    slt     $t1, $t0, 80
+    li      $t2, 70
+    slt     $t2, $t2, $t0
+    and     $t1, $t1, $t2
+    bne     $t1, 1, while_loop_up
+
+
+    li      $t0, 0                 
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL
+while_loop_right:                       # go up
+    lw      $t0, BOT_X
+
+    li      $t1, 50
+    ble     $t0, $t1, while_loop_right
+
+go_to_stove:
+    sw      $0, VELOCITY
+    li      $t0, 270                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+
+drop_off_meat_at_chopping:
+    li      $t0, 0
+    sw      $t0, DROPOFF
+    li      $t0, 0x00020002         # the chopping board coordinate
+    sw      $t0, SET_TILE
+
+cooking_loop:
+    lw      $t0, GET_TILE_INFO
+    blt     $t0, 1, cooking_loop
+
+pick_up_cooked_meat:
+    li      $t1, 1
+    sw      $t1, PICKUP             # pick up cooked meat on tray 0
+
+go_to_chopping:
+    li      $t0, 0                 
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL
+    sw      $t0, VELOCITY
+while_loop_right2:                       # go up
+    lw      $t0, BOT_X
+
+    li      $t1, 110
+    ble     $t0, $t1, while_loop_right2
+
+    sw      $0, VELOCITY
+    li      $t0, 270                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+drop_off_onion_at_chopping:
+    li      $t0, 0
+    sw      $t0, DROPOFF
+    li      $t0, 0x00020005         # the chopping board coordinate
+    sw      $t0, SET_TILE
+
+chopping_loop:
+    lw      $t0, GET_TILE_INFO
+    blt     $t0, 1, chopping_loop
+
+pick_up_chopped_onion:
+    li      $t1, 1
+    sw      $t1, PICKUP             # pick up cooked meat on tray 0
+
+
+go_to_counter:
+    li      $t0, 0                 
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL
+    sw      $t0, VELOCITY
+
+while_loop_counter:                       # go up
+    lw      $t0, BOT_X
+
+    li      $t1, 120
+    ble     $t0, $t1, while_loop_counter
+
+    sw      $0, VELOCITY
+    li      $t0, 0                  
+    sw      $t0, ANGLE
+    li      $t0, 1
+    sw      $t0, ANGLE_CONTROL 
+drop_off_everything:
+    li      $t0, 1
+    sw      $t0, DROPOFF
+    li      $t0, 2
+    sw      $t0, DROPOFF
+    li      $t0, 0
+    sw      $t0, DROPOFF
+   # ======================================================================
+
+
+infinite:
+    j       infinite
+
+.kdata
+chunkIH:    .space 32
+non_intrpt_str:    .asciiz "Non-interrupt exception\n"
+unhandled_str:    .asciiz "Unhandled interrupt type\n"
+.ktext 0x80000180
+interrupt_handler:
+.set noat
+        move      $k1, $at        # Save $at
+.set at
+        la        $k0, chunkIH
+        sw        $a0, 0($k0)        # Get some free registers
+        sw        $v0, 4($k0)        # by storing them to a global variable
+        sw        $t0, 8($k0)
+        sw        $t1, 12($k0)
+        sw        $t2, 16($k0)
+        sw        $t3, 20($k0)
+		sw        $t4, 24($k0)
+		sw        $t5, 28($k0)
+
+        mfc0      $k0, $13             # Get Cause register
+        srl       $a0, $k0, 2
+        and       $a0, $a0, 0xf        # ExcCode field
+        bne       $a0, 0, non_intrpt
+
+
+
+interrupt_dispatch:            # Interrupt:
+    mfc0       $k0, $13        # Get Cause register, again
+    beq        $k0, 0, done        # handled all outstanding interrupts
+
+    and        $a0, $k0, BONK_INT_MASK    # is there a bonk interrupt?
+    bne        $a0, 0, bonk_interrupt
+
+    and        $a0, $k0, TIMER_INT_MASK    # is there a timer interrupt?
+    bne        $a0, 0, timer_interrupt
+
+	and 	$a0, $k0, REQUEST_PUZZLE_INT_MASK
+	bne 	$a0, 0, request_puzzle_interrupt
+
+    li        $v0, PRINT_STRING    # Unhandled interrupt types
+    la        $a0, unhandled_str
+    syscall
+    j    done
+
+bonk_interrupt:
+	sw 		$0, BONK_ACK
+    # Fill in your code here
+    sw      $0, VELOCITY          # when SPIMBot runs into a wall == velocity set to zero
+    j       interrupt_dispatch    # see if other interrupts are waiting
+
+request_puzzle_interrupt:
+	sw 		$0, REQUEST_PUZZLE_ACK
+    li      $t7, 3
+	sw 		$t7, p_flag
+	# Fill in your code here
+    
+	j	interrupt_dispatch
+
+timer_interrupt:
+	sw 		$0, TIMER_ACK
+	# Fill in your code here
+    j        interrupt_dispatch    # see if other interrupts are waiting
+
+non_intrpt:                # was some non-interrupt
+    li        $v0, PRINT_STRING
+    la        $a0, non_intrpt_str
+    syscall                # print out an error message
+    # fall through to done
+
+done:
+    la      $k0, chunkIH
+    lw      $a0, 0($k0)        # Restore saved registers
+    lw      $v0, 4($k0)
+	lw      $t0, 8($k0)
+    lw      $t1, 12($k0)
+    lw      $t2, 16($k0)
+    lw      $t3, 20($k0)
+	lw $t4, 24($k0)
+	lw $t5, 28($k0)
+.set noat
+    move    $at, $k1        # Restore $at
+.set at
+    eret
