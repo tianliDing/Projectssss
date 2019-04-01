@@ -1,0 +1,14 @@
+cd code
+cd ..
+ls
+ls
+cd shell
+ls
+cd code
+echo back
+echo back
+cd code
+cd shell
+cd shell
+!d
+ls
